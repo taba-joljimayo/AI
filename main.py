@@ -3,6 +3,7 @@ import dlib
 import numpy as np
 from imutils import face_utils
 from tensorflow.keras.models import load_model
+import time
 
 IMG_SIZE = (34, 26)
 
@@ -31,8 +32,31 @@ def crop_eye(img, eye_points):
 
     return eye_img, eye_rect
 
+def align_face(img, shapes):
+    """
+    얼굴 정렬(기울기 보정)을 수행합니다.
+    """
+    left_eye_center = np.mean(shapes[36:42], axis=0)
+    right_eye_center = np.mean(shapes[42:48], axis=0)
+
+    # 두 눈 사이의 기울기를 계산
+    dY = right_eye_center[1] - left_eye_center[1]
+    dX = right_eye_center[0] - left_eye_center[0]
+    angle = np.degrees(np.arctan2(dY, dX))
+
+    # 중심점과 각도를 기반으로 이미지를 회전
+    eyes_center = ((left_eye_center[0] + right_eye_center[0]) // 2,
+                   (left_eye_center[1] + right_eye_center[1]) // 2)
+    M = cv2.getRotationMatrix2D(eyes_center, angle, 1)
+    aligned_img = cv2.warpAffine(img, M, (img.shape[1], img.shape[0]))
+    return aligned_img
+
 # 웹캠으로 변경
 cap = cv2.VideoCapture(0)  # 0번 디바이스 (기본 웹캠)
+
+# 감지 간격 설정 (초)
+detect_interval = 0.01  # 0.3초마다 감지
+last_detect_time = time.time()
 
 while cap.isOpened():
     ret, img_ori = cap.read()
@@ -44,14 +68,28 @@ while cap.isOpened():
     img = img_ori.copy()
     gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
 
-    faces = detector(gray)
+    # 0.3초마다 얼굴 감지 실행
+    if time.time() - last_detect_time > detect_interval:
+        faces = detector(gray)
+        last_detect_time = time.time()
+    else:
+        faces = []  # 감지 대기 상태
 
     for face in faces:
         shapes = predictor(gray, face)
         shapes = face_utils.shape_to_np(shapes)
 
-        eye_img_l, eye_rect_l = crop_eye(gray, eye_points=shapes[36:42])
-        eye_img_r, eye_rect_r = crop_eye(gray, eye_points=shapes[42:48])
+        # 얼굴 정렬
+        aligned_img = align_face(img, shapes)
+        aligned_gray = cv2.cvtColor(aligned_img, cv2.COLOR_BGR2GRAY)
+
+        # 정렬된 얼굴에서 랜드마크 다시 감지
+        aligned_shapes = predictor(aligned_gray, face)
+        aligned_shapes = face_utils.shape_to_np(aligned_shapes)
+
+        # 왼쪽과 오른쪽 눈 추출
+        eye_img_l, eye_rect_l = crop_eye(aligned_gray, eye_points=aligned_shapes[36:42])
+        eye_img_r, eye_rect_r = crop_eye(aligned_gray, eye_points=aligned_shapes[42:48])
 
         eye_img_l = cv2.resize(eye_img_l, dsize=IMG_SIZE)
         eye_img_r = cv2.resize(eye_img_r, dsize=IMG_SIZE)
@@ -60,26 +98,32 @@ while cap.isOpened():
         cv2.imshow('Left Eye', eye_img_l)
         cv2.imshow('Right Eye', eye_img_r)
 
+        # 눈 상태 예측
         eye_input_l = eye_img_l.copy().reshape((1, IMG_SIZE[1], IMG_SIZE[0], 1)).astype(np.float32) / 255.
         eye_input_r = eye_img_r.copy().reshape((1, IMG_SIZE[1], IMG_SIZE[0], 1)).astype(np.float32) / 255.
 
         pred_l = model.predict(eye_input_l)
         pred_r = model.predict(eye_input_r)
 
-        # visualize
+        # 상태 표시
         state_l = 'O %.1f' if pred_l > 0.1 else '- %.1f'
         state_r = 'O %.1f' if pred_r > 0.1 else '- %.1f'
 
         state_l = state_l % pred_l
         state_r = state_r % pred_r
 
-        cv2.rectangle(img, pt1=tuple(eye_rect_l[0:2]), pt2=tuple(eye_rect_l[2:4]), color=(255, 255, 255), thickness=2)
-        cv2.rectangle(img, pt1=tuple(eye_rect_r[0:2]), pt2=tuple(eye_rect_r[2:4]), color=(255, 255, 255), thickness=2)
+        # 결과 시각화
+        cv2.rectangle(aligned_img, pt1=tuple(eye_rect_l[0:2]), pt2=tuple(eye_rect_l[2:4]), color=(255, 255, 255), thickness=2)
+        cv2.rectangle(aligned_img, pt1=tuple(eye_rect_r[0:2]), pt2=tuple(eye_rect_r[2:4]), color=(255, 255, 255), thickness=2)
 
-        cv2.putText(img, state_l, tuple(eye_rect_l[0:2]), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
-        cv2.putText(img, state_r, tuple(eye_rect_r[0:2]), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
+        cv2.putText(aligned_img, state_l, tuple(eye_rect_l[0:2]), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
+        cv2.putText(aligned_img, state_r, tuple(eye_rect_r[0:2]), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
 
-    cv2.imshow('Result', img)
+        cv2.imshow('Aligned Result', aligned_img)
+
+    # 원본 영상 표시
+    cv2.imshow('Original Frame', img)
+
     if cv2.waitKey(1) == ord('q'):  # 'q'를 누르면 종료
         break
 
