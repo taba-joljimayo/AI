@@ -11,7 +11,7 @@ detector = dlib.get_frontal_face_detector()
 predictor = dlib.shape_predictor('shape_predictor_68_face_landmarks.dat')
 
 # 모델을 compile=False로 로드
-model = load_model('2018_12_17_22_58_35.h5', compile=False)
+model = load_model('2024_12_06_02_25_04.keras', compile=True)
 model.summary()
 
 def crop_eye(img, eye_points):
@@ -55,7 +55,7 @@ def align_face(img, shapes):
 cap = cv2.VideoCapture(0)  # 0번 디바이스 (기본 웹캠)
 
 # 감지 간격 설정 (초)
-detect_interval = 0.01  # 0.3초마다 감지
+detect_interval = 0.1  # 0.3초마다 감지
 last_detect_time = time.time()
 
 while cap.isOpened():
@@ -109,9 +109,8 @@ while cap.isOpened():
         state_l = 'O %.1f' if pred_l > 0.1 else '- %.1f'
         state_r = 'O %.1f' if pred_r > 0.1 else '- %.1f'
 
-        state_l = state_l % pred_l
-        state_r = state_r % pred_r
-
+        state_l = state_l % pred_l.item()
+        state_r = state_r % pred_r.item()
         # 결과 시각화
         cv2.rectangle(aligned_img, pt1=tuple(eye_rect_l[0:2]), pt2=tuple(eye_rect_l[2:4]), color=(255, 255, 255), thickness=2)
         cv2.rectangle(aligned_img, pt1=tuple(eye_rect_r[0:2]), pt2=tuple(eye_rect_r[2:4]), color=(255, 255, 255), thickness=2)
