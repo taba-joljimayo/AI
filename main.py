@@ -10,11 +10,11 @@ from imutils import face_utils
 from tensorflow.keras.models import load_model
 from flask import Flask
 from flask_socketio import SocketIO, emit
+import os
 
 # Flask 애플리케이션 초기화
 app = Flask(__name__)
-socketio = SocketIO(app, async_mode='eventlet')
-
+socketio = SocketIO(app, async_mode='eventlet', max_http_buffer_size=5_000_000)  #
 # 설정
 IMG_SIZE = (34, 26)
 detector = dlib.get_frontal_face_detector()
@@ -40,6 +40,23 @@ def crop_eye(img, eye_points):
 
     return eye_img, eye_rect
 
+def save_image_with_unique_name(directory, filename, img):
+    """
+    파일명이 중복되지 않도록 넘버링하여 이미지를 저장합니다.
+    """
+    base_filename, ext = os.path.splitext(filename)
+    counter = 1
+    unique_filename = filename
+
+    # 파일명이 중복되지 않을 때까지 확인
+    while os.path.exists(os.path.join(directory, unique_filename)):
+        unique_filename = f"{base_filename}_{counter}{ext}"
+        counter += 1
+
+    full_path = os.path.join(directory, unique_filename)
+    cv2.imwrite(full_path, img)
+    print(f"이미지 저장: {full_path}")
+    return unique_filename
 
 def align_face(img, shapes):
     """
@@ -60,17 +77,26 @@ def align_face(img, shapes):
     aligned_img = cv2.warpAffine(img, M, (img.shape[1], img.shape[0]))
     return aligned_img
 
+IMAGE_SAVE_DIR = './faces'
 
 @socketio.on('process_image')
 def handle_binary_image(data):
     try:
+
+        # print('bytes 길이: ', len(data))
         # 수신 데이터 디코딩
         nparr = np.frombuffer(data, np.uint8)
+
         img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
 
         if img is None:
             emit('result', 'Error: Failed to decode image data')
             return
+
+        save_image_with_unique_name(IMAGE_SAVE_DIR, "rotated_img.jpg", img)
+        # image_path = os.path.join(IMAGE_SAVE_DIR, "rotated_img.jpg")
+        # cv2.imwrite(image_path, img)
+        # print(f"이미지가 저장되었습니다: {image_path}")
 
         # 그레이스케일 변환 및 처리
         gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
@@ -80,8 +106,8 @@ def handle_binary_image(data):
             emit('result', 'No face detected')
             return
 
-        emit('result', 'Image processed successfully')
-        results = []
+        # emit('result', 'Image processed successfully')
+        result = 0
         for face in faces:
             shapes = predictor(gray, face)
             shapes = face_utils.shape_to_np(shapes)
@@ -98,9 +124,17 @@ def handle_binary_image(data):
             eye_img_l, eye_rect_l = crop_eye(aligned_gray, eye_points=aligned_shapes[36:42])
             eye_img_r, eye_rect_r = crop_eye(aligned_gray, eye_points=aligned_shapes[42:48])
 
+            # # 눈 이미지 저장
+            # left_eye_path = os.path.join(IMAGE_SAVE_DIR, "left_eye.jpg")
+            # right_eye_path = os.path.join(IMAGE_SAVE_DIR, "right_eye.jpg")
+            # cv2.imwrite(left_eye_path, eye_img_l)
+            # cv2.imwrite(right_eye_path, eye_img_r)
+            # print(f"왼쪽 눈: {left_eye_path}, 오른쪽 눈: {right_eye_path}")
+
             eye_img_l = cv2.resize(eye_img_l, dsize=IMG_SIZE)
             eye_img_r = cv2.resize(eye_img_r, dsize=IMG_SIZE)
             eye_img_r = cv2.flip(eye_img_r, flipCode=1)
+
 
             # 모델 예측
             eye_input_l = eye_img_l.reshape((1, IMG_SIZE[1], IMG_SIZE[0], 1)).astype(np.float32) / 255.
@@ -113,10 +147,16 @@ def handle_binary_image(data):
             state_l = '1' if pred_l > 0.5 else '0'
             state_r = '1' if pred_r > 0.5 else '0'
 
-            results.append(f"Left: {state_l}, Right: {state_r}")
+            if state_l == '1' and state_r == '1':
+                # results.append("1")
+                result = 1
+            else:
+                # results.append("0")
+                result = 0
+
 
         # 문자열 결과 반환
-        emit('result', '; '.join(results))
+        emit('result', result)
     except Exception as e:
         emit('result', f"Error: {str(e)}")
 
