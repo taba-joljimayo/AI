@@ -40,23 +40,23 @@ def crop_eye(img, eye_points):
 
     return eye_img, eye_rect
 
-def save_image_with_unique_name(directory, filename, img):
-    """
-    파일명이 중복되지 않도록 넘버링하여 이미지를 저장합니다.
-    """
-    base_filename, ext = os.path.splitext(filename)
-    counter = 1
-    unique_filename = filename
-
-    # 파일명이 중복되지 않을 때까지 확인
-    while os.path.exists(os.path.join(directory, unique_filename)):
-        unique_filename = f"{base_filename}_{counter}{ext}"
-        counter += 1
-
-    full_path = os.path.join(directory, unique_filename)
-    cv2.imwrite(full_path, img)
-    print(f"이미지 저장: {full_path}")
-    return unique_filename
+# def save_image_with_unique_name(directory, filename, img):
+#     """
+#     파일명이 중복되지 않도록 넘버링하여 이미지를 저장합니다.
+#     """
+#     base_filename, ext = os.path.splitext(filename)
+#     counter = 1
+#     unique_filename = filename
+#
+#     # 파일명이 중복되지 않을 때까지 확인
+#     while os.path.exists(os.path.join(directory, unique_filename)):
+#         unique_filename = f"{base_filename}_{counter}{ext}"
+#         counter += 1
+#
+#     full_path = os.path.join(directory, unique_filename)
+#     cv2.imwrite(full_path, img)
+#     print(f"이미지 저장: {full_path}")
+#     return unique_filename
 
 def align_face(img, shapes):
     """
@@ -93,10 +93,10 @@ def handle_binary_image(data):
             emit('result', 'Error: Failed to decode image data')
             return
 
-        save_image_with_unique_name(IMAGE_SAVE_DIR, "rotated_img.jpg", img)
-        # image_path = os.path.join(IMAGE_SAVE_DIR, "rotated_img.jpg")
-        # cv2.imwrite(image_path, img)
-        # print(f"이미지가 저장되었습니다: {image_path}")
+        # save_image_with_unique_name(IMAGE_SAVE_DIR, "rotated_img.jpg", img)
+        # # image_path = os.path.join(IMAGE_SAVE_DIR, "rotated_img.jpg")
+        # # cv2.imwrite(image_path, img)
+        # # print(f"이미지가 저장되었습니다: {image_path}")
 
         # 그레이스케일 변환 및 처리
         gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
