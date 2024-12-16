@@ -11,7 +11,7 @@ from tensorflow.keras.models import load_model
 from flask import Flask
 from flask_socketio import SocketIO, emit
 import os
-
+count=0
 # Flask 애플리케이션 초기화
 app = Flask(__name__)
 socketio = SocketIO(app, async_mode='eventlet', max_http_buffer_size=5_000_000)  #
@@ -81,6 +81,7 @@ IMAGE_SAVE_DIR = './faces'
 
 @socketio.on('process_image')
 def handle_binary_image(data):
+    global count
     try:
 
         # print('bytes 길이: ', len(data))
@@ -149,16 +150,25 @@ def handle_binary_image(data):
 
             if state_l == '1' and state_r == '1':
                 # results.append("1")
-                result = 1
+                if count >= 40:
+                    emit('result', 'open')
+                count = 0
+
             else:
                 # results.append("0")
-                result = 0
 
+                count += 1
 
+            if count == 20:
+                # 문자열 결과 반환
+                emit('result', 'sleep')
+            elif count == 40:
+                emit('result', 'siren')
         # 문자열 결과 반환
-        emit('result', result)
+        #emit('result', result)
     except Exception as e:
-        emit('result', f"Error: {str(e)}")
+        count+=1
+        #emit('result', f"Error: {str(e)}")
 
 
 @app.route('/')
